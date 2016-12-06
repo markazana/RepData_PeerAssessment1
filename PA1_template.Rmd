@@ -1,25 +1,134 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "PA1_template.Rmd"
+output: html_document
 ---
 
+```{r setup, include=FALSE, echo=FALSE,results='hide'}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+#install.packages(c("ggplot2","xtable"))
+library("xtable")
+library(ggplot2)
+```
 
-## Loading and preprocessing the data
+## Activity Monitoring Data
+```{r download, echo=FALSE,results='hide'}
+setwd("D:/User Profiles/mpemark/Desktop/Cousera/Data Science Specialization/Course 5/Week2/Assignment")
+# download the dataset
+#fileUrl <- "https://d396qusza40orc.cloudfront.net/exdata%2Fdata%2FNEI_data.zip"
+#download.file(fileUrl,destfile="./repdata_data_activity.zip")
+#unzip(zipfile="./repdata_data_activity.zip",exdir=".")
+```
 
+```{r readDataSet, echo=FALSE}
+# read the dataset
+colClass <- c("integer","Date","integer")
+activity <- read.csv("activity.csv",header = TRUE, sep = ",", colClasses = colClass)
+```
 
+### What is mean total number of steps taken per day?
+```{r totalStepsPerDay1, echo=TRUE, results='hide'}
+stepsPerDay <- with(activity, aggregate(steps, by=list(date), FUN=sum, na.rm=TRUE))
+colnames(stepsPerDay) <- c("Date","Steps")
 
-## What is mean total number of steps taken per day?
+# ggplot2 help
+# http://www.statmethods.net/advgraphs/ggplot2.html
+# https://www.r-bloggers.com/how-to-make-a-histogram-with-ggplot2/
+par(mar = c(4,4,2,2))
+pal <- colorRampPalette(c("gold","red"))
+q <- qplot(stepsPerDay$Steps)
+q <- q + geom_histogram(fill=pal(1), col=pal(2)[2]) 
+q <- q + labs(title = "Total number of steps taken each day")
+q <- q + xlab("Steps per day")
+print(q)
+```
 
+### Mean and median number of steps taken each day?
+```{r meanStepsPerDay, echo=TRUE}
+stepsPerDay.mean <- mean(stepsPerDay$Steps,na.rm = TRUE)
+```
+The mean steps per day is `r stepsPerDay.mean`.
 
+```{r medianStepsPerDay, echo=TRUE}
+stepsPerDay.median <- median(stepsPerDay$Steps,na.rm = TRUE)
+```
+The median steps per day is `r stepsPerDay.median`.
 
-## What is the average daily activity pattern?
+### Time series plot of average number of steps taken
+```{r avgNumStepsTS, echo=TRUE}
+avgSteps <- aggregate(activity$steps, by=list(activity$interval), mean, na.rm=TRUE)
+colnames(avgSteps) <- c("Interval","Steps")
+g <- ggplot(avgSteps, aes(Interval, Steps))
+g <- g + geom_line(color = "blue", size = 1, alpha=2/3)
+g <- g + labs(title = "Time series for Average number of steps taken")
+g <- g + xlab("Interval") + ylab("Average Steps")
+g <- g + geom_smooth(method = "lm", se = TRUE, col = "red")
+g
+```
 
+### 5-minute interval that contains the maximum number of steps 
+The 5-minute interval that contains the maximum number of steps is
+```{r interval5min, echo=TRUE}
+maxInterval <- avgSteps[which.max(avgSteps$Steps),]
+print(maxInterval, type = "html")
+```
 
+### Filling missing values 
+```{r missingValues, echo=TRUE}
+completeCases <- complete.cases(activity)
+# TRUE=Complete cases, FALSE=Incomplete cases
+table(completeCases)
+```
+We need to patch `r sum(!completeCases)` missing values in the dataset.
 
-## Imputing missing values
+Patch using mean value for each 5-minute interval as approximate.
+```{r patchValues, echo=TRUE}
+activity1 <- read.csv("activity.csv",header = TRUE, sep = ",", colClasses = colClass)
+patch.count <- 0
 
+for(i in seq_along(activity1$interval)) {
+  if(is.na(activity1[i,"steps"])) {
+    patch.count <- patch.count + 1
+    activity1[i,"steps"] <- avgSteps[which(avgSteps$Interval == activity1[i,"interval"]),"Steps"]
+  }
+}
 
+print(c("Values patched:", patch.count), quote = FALSE)
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+### (AFTER PATCHING) What is mean total number of steps taken per day?
+```{r totalStepsPerDay2, echo=TRUE, results='hide'}
+stepsPerDay1 <- with(activity1, aggregate(steps, by=list(date), FUN=sum, na.rm=TRUE))
+colnames(stepsPerDay1) <- c("Date","Steps")
+
+pal <- colorRampPalette(c("purple","cyan"))
+q <- qplot(stepsPerDay1$Steps)
+q <- q + geom_histogram(fill=pal(1), col=pal(2)[2]) 
+q <- q + labs(title = "(PATCHED) Total number of steps taken each day")
+q <- q + xlab("Steps per day")
+print(q)
+```
+
+Noticed that the 0 steps/day count has dropped drastically after patching.
+
+### Average number of steps taken per 5-minute interval across weekdays and weekends
+```{r panelPlot5, echo=TRUE}
+weekendFinder <- function(date) {
+  dayOfWeek <- format(date,"%A")
+  if(grepl("Saturday|Sunday", dayOfWeek, ignore.case = TRUE)) {
+    return("Weekend")
+  }
+  return("Weekday")
+}
+activity1$day <- sapply(activity1$date,FUN = weekendFinder) # cannot use lapply here
+
+avgSteps1 <- aggregate(steps ~ interval + day, data=activity1, FUN=mean, na.rm=TRUE)
+
+g <- ggplot(avgSteps1, aes(interval, steps))
+g <- g + facet_grid(day ~ .)
+g <- g + geom_line(color = "blue", size = 1, alpha=2/3)
+g <- g + labs(title = "Time series for Average number of steps taken")
+g <- g + xlab("Interval") + ylab("Average Steps")
+g <- g + geom_smooth(method = "lm", se = TRUE, col = "red")
+g
+```
